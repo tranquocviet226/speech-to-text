@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio to Text Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            min-height: 100px;
+            display: none;
+        }
+        #loading {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio to Text Converter</h1>
+        <form id="uploadForm">
+            <input type="file" id="audioFile" accept="audio/*" required>
+            <button type="submit">Convert to Text</button>
+        </form>
+        <div id="loading">Converting... Please wait...</div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const file = document.getElementById('audioFile').files[0];
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            
+            try {
+                const response = await fetch('/transcribe/', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                result.textContent = data.text;
+                result.style.display = 'block';
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+                result.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
