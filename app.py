@@ -5,9 +5,19 @@ import os
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
 
 # Tạo ứng dụng FastAPI
 app = FastAPI()
+
+# Add CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 # Load mô hình Whisper
 model = whisper.load_model("base")  # Bạn có thể thay "base" bằng "small", "medium", "large", tùy nhu cầu
@@ -15,11 +25,6 @@ model = whisper.load_model("base")  # Bạn có thể thay "base" bằng "small"
 # Add these lines after creating the FastAPI app
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Add this new route at the beginning of your routes
-@app.get("/")
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/hello/")
 async def transcribe():
