@@ -32,7 +32,7 @@ async def transcribe(file: UploadFile = File(...)):
         temp_file_path = temp_file.name
 
     # Chuyển đổi giọng nói thành văn bản
-    result = model.transcribe(temp_file_path)
+    result = model.transcribe(temp_file_path, fp16=False)
 
     # Xóa file tạm
     os.remove(temp_file_path)
