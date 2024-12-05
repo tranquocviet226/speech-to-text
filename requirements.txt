@@ -3,3 +3,5 @@ torchaudio
 openai-whisper
 fastapi
 uvicorn
+python-multipart
+jinja2 #Templates

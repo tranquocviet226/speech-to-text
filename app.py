@@ -2,9 +2,7 @@ from fastapi import FastAPI, File, UploadFile
 import whisper
 import tempfile
 import os
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi import Request
+import torch
 from fastapi.middleware.cors import CORSMiddleware
 
 # Tạo ứng dụng FastAPI
@@ -19,12 +17,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Load mô hình Whisper
-model = whisper.load_model("base")  # Bạn có thể thay "base" bằng "small", "medium", "large", tùy nhu cầu
-
-# Add these lines after creating the FastAPI app
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = whisper.load_model("base", device=device)
 
 @app.get("/hello/")
 async def transcribe():
