@@ -20,11 +20,11 @@ app.add_middleware(
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = whisper.load_model("base", device=device)
 
-@app.get("/hello/")
+@app.get("/hello")
 async def transcribe():
     return {"text": "Hello"}
 
-@app.post("/transcribe/")
+@app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     # Lưu file tạm
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
