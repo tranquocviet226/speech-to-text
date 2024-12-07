@@ -6,6 +6,7 @@ import json
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from youtube_utils import download_audio_from_youtube 
+from moviepy import AudioFileClip
 
 # Tạo ứng dụng FastAPI
 app = FastAPI()
@@ -49,6 +50,15 @@ async def transcribeSub(request: YouTubeRequest):
         youtube_url = request.youtube_url
         audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3", cookies_path="cookies.txt")
         
+        # Kiểm tra độ dài của file audio
+        audio_clip = AudioFileClip(audio_path)
+        duration_seconds = audio_clip.duration
+        audio_clip.close()
+        
+        # Nếu độ dài vượt quá 1 giờ (3600 giây)
+        if duration_seconds > 3600:
+            raise Exception("Audio file is too long. Maximum duration is 1 hour.")
+        
         # Chuyển đổi giọng nói thành văn bản
         result = model.transcribe(audio_path, fp16=False)
         subtitles = []
@@ -64,7 +74,13 @@ async def transcribeSub(request: YouTubeRequest):
                 "text": text.strip()
             })
             
-        return {"data": subtitles}
+        # Lấy thông tin ngôn ngữ từ kết quả
+        detected_language = result.get("language", "unknown")
+            
+        return {
+            "data": subtitles,
+            "language": detected_language
+        }
         
     except Exception as e:
         return {"error": str(e)}, 500
