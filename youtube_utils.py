@@ -9,7 +9,7 @@ def download_audio_from_youtube(url, output_path="audio.mp3"):
             "preferredcodec": "mp3",     # Định dạng mp3
             "preferredquality": "192",   # Chất lượng audio
         }],
-        "quiet": True,  # Không hiển thị log chi tiết
+        "quiet": False,  # Không hiển thị log chi tiết
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])

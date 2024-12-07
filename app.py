@@ -45,22 +45,32 @@ class YouTubeRequest(BaseModel):
 
 @app.post("/transcribe-sub")
 async def transcribeSub(request: YouTubeRequest):
-    youtube_url = request.youtube_url
-    audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3")
-    # Chuyển đổi giọng nói thành văn bản
-    result = model.transcribe(audio_path, fp16=False)
-    subtitles = []
-    for segment in result["segments"]:
-        start = max(0, segment["start"] - 0.2)  # Giảm thời gian bắt đầu đi 0.5 giây (không nhỏ hơn 0)
-        end = segment["end"]      # Thời gian kết thúc
-        text = segment["text"]    # Văn bản
+    try:
+        youtube_url = request.youtube_url
+        audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3")
+        
+        # Chuyển đổi giọng nói thành văn bản
+        result = model.transcribe(audio_path, fp16=False)
+        subtitles = []
+        
+        for segment in result["segments"]:
+            start = max(0, segment["start"] - 0.2)
+            end = segment["end"]
+            text = segment["text"]
 
-        subtitles.append({
-            "start": round(start, 3),       # Thời gian bắt đầu (giây), làm tròn 3 chữ số thập phân
-            "dur": round(end - start, 3),  # Duration (độ dài đoạn phụ đề)
-            "text": text.strip()           # Văn bản
-        })
-    os.remove('audio.mp3')
-
-    return {"data": subtitles}
+            subtitles.append({
+                "start": round(start, 3),
+                "dur": round(end - start, 3),
+                "text": text.strip()
+            })
+            
+        return {"data": subtitles}
+        
+    except Exception as e:
+        return {"error": str(e)}, 500
+        
+    finally:
+        # Clean up the audio file if it exists
+        if 'audio_path' in locals() and os.path.exists('audio.mp3'):
+            os.remove('audio.mp3')
 # Chạy server: uvicorn filename:app --reload
