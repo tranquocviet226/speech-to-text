@@ -47,7 +47,7 @@ class YouTubeRequest(BaseModel):
 async def transcribeSub(request: YouTubeRequest):
     try:
         youtube_url = request.youtube_url
-        audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3")
+        audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3", cookies_path="cookies.txt")
         
         # Chuyển đổi giọng nói thành văn bản
         result = model.transcribe(audio_path, fp16=False)
