@@ -1,4 +1,4 @@
-pip install torch torchaudio openai-whisper fastapi uvicorn jinja2 python-multipart
+pip install torch torchaudio openai-whisper fastapi uvicorn jinja2 python-multipart yt-dlp
 
 Install ffmpeg
 
