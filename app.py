@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 import whisper
 import tempfile
 import os
@@ -6,7 +6,10 @@ import json
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from youtube_utils import download_audio_from_youtube 
-from moviepy import AudioFileClip
+import asyncio
+import uuid
+from typing import Dict
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 # Tạo ứng dụng FastAPI
 app = FastAPI()
@@ -22,71 +25,128 @@ app.add_middleware(
 
 model = whisper.load_model("base", device="cpu")
 
-@app.get("/hello")
-async def transcribe():
-    return {"text": "Hello"}
+# Dictionary để lưu trữ kết quả transcribe
+transcription_results: Dict[str, dict] = {}
 
-@app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
-    # Lưu file tạm
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_file.write(await file.read())
-        temp_file_path = temp_file.name
+# Tạo executor cho các tác vụ I/O
+executor = ThreadPoolExecutor(max_workers=4)
+# Tạo executor cho các tác vụ CPU-intensive
+process_pool = ProcessPoolExecutor(max_workers=2)
 
-    # Chuyển đổi giọng nói thành văn bản
-    result = model.transcribe(temp_file_path, fp16=False)
+# Tạo hàm riêng để chạy transcribe
+def run_transcribe(audio_path):
+    return model.transcribe(audio_path, fp16=False)
 
-    # Xóa file tạm
-    os.remove(temp_file_path)
-
-    return {"text": result["text"]}
-
-class YouTubeRequest(BaseModel):
-    youtube_url: str
-
-@app.post("/transcribe-sub")
-async def transcribeSub(request: YouTubeRequest):
+async def process_transcription(task_id: str, youtube_url: str):
     try:
-        youtube_url = request.youtube_url
-        audio_path = download_audio_from_youtube(youtube_url, output_path="audio.mp3", cookies_path="cookies.txt")
+        loop = asyncio.get_event_loop()
+        # Download audio vẫn dùng ThreadPoolExecutor
+        audio_path = await loop.run_in_executor(
+            executor,
+            lambda: download_audio_from_youtube(youtube_url, output_path=f"audio_{task_id}.mp3", cookies_path="cookies.txt")
+        )
+
+        # Chạy transcribe trong ProcessPoolExecutor
+        result = await loop.run_in_executor(
+            process_pool,
+            run_transcribe,
+            audio_path
+        )
         
-        # Kiểm tra độ dài của file audio
-        audio_clip = AudioFileClip(audio_path)
-        duration_seconds = audio_clip.duration
-        audio_clip.close()
-        
-        # Nếu độ dài vượt quá 1 giờ (3600 giây)
-        if duration_seconds > 3600:
-            raise Exception("Audio file is too long. Maximum duration is 1 hour.")
-        
-        # Chuyển đổi giọng nói thành văn bản
-        result = model.transcribe(audio_path, fp16=False)
+        # Xử lý kết quả không cần lock
         subtitles = []
-        
         for segment in result["segments"]:
             start = max(0, segment["start"] - 0.2)
             end = segment["end"]
             text = segment["text"]
-
             subtitles.append({
                 "start": round(start, 3),
                 "dur": round(end - start, 3),
                 "text": text.strip()
             })
             
-        # Lấy thông tin ngôn ngữ từ kết quả
         detected_language = result.get("language", "unknown")
-            
-        return {
+        
+        transcription_results[task_id] = {
+            "status": "completed",
             "data": subtitles,
             "language": detected_language
         }
+        print(f"Transcription completed for task {task_id}")
         
     except Exception as e:
-        return {"error": str(e)}, 500
-        
+        transcription_results[task_id] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
     finally:
-        # Clean up the audio file if it exists
-        if 'audio_path' in locals() and os.path.exists('audio.mp3'):
-            os.remove('audio.mp3')
+        # Clean up không cần lock
+        if os.path.exists(f"audio_{task_id}.mp3"):
+            await loop.run_in_executor(
+                executor,
+                lambda: os.remove(f"audio_{task_id}.mp3")
+            )
+
+@app.get("/hello")
+async def transcribe():
+    return {"text": "Hello"}
+
+@app.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(await file.read())
+        temp_file_path = temp_file.name
+
+    # Chạy transcribe trong ProcessPoolExecutor
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        process_pool,
+        run_transcribe,
+        temp_file_path
+    )
+
+    os.remove(temp_file_path)
+    return {"text": result["text"]}
+
+class YouTubeRequest(BaseModel):
+    youtube_url: str
+
+@app.post("/transcribe-sub")
+async def transcribeSub(request: YouTubeRequest, background_tasks: BackgroundTasks):
+    task_id = str(uuid.uuid4())
+    
+    # Khởi tạo trạng thái ban đầu
+    transcription_results[task_id] = {
+        "status": "processing"
+    }
+    
+    # Thêm task vào background
+    background_tasks.add_task(process_transcription, task_id, request.youtube_url)
+    
+    # Trả về task_id ngay lập tức
+    return {
+        "task_id": task_id,
+        "status": "processing",
+        "message": "Transcription is being processed"
+    }
+
+@app.get("/transcribe-status/{task_id}")
+async def get_transcription_status(task_id: str):
+    if task_id not in transcription_results:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    result = transcription_results[task_id]
+    
+    # Nếu đã hoàn thành hoặc có lỗi, xóa kết quả khỏi bộ nhớ
+    if result["status"] in ["completed", "error"]:
+        transcription_results.pop(task_id)
+    
+    # if os.path.exists(f"audio_{task_id}.mp3"):
+    #     os.remove(f"audio_{task_id}.mp3")
+    #     print("Removed: ", task_id)
+        
+
+    return result
+
 # Chạy server: uvicorn filename:app --reload
