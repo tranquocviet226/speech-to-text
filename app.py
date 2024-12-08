@@ -31,8 +31,6 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-model = whisper.load_model("base", device="cpu")
-
 # Dictionary để lưu trữ kết quả transcribe
 transcription_results: Dict[str, dict] = {}
 
@@ -41,9 +39,24 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Tạo executor cho các tác vụ CPU-intensive
 process_pool = ProcessPoolExecutor(max_workers=2)
 
-# Tạo hàm riêng để chạy transcribe
+def init_whisper_model():
+    logger.info("Initializing new Whisper model in worker process")
+    return whisper.load_model("base")
+
 def run_transcribe(audio_path):
-    return model.transcribe(audio_path, fp16=False)
+    try:
+        logger.info(f"Worker process {os.getpid()} starting transcription")
+        
+        # Load model trong worker process
+        model = init_whisper_model()
+        
+        logger.info(f"Starting transcribe for file: {audio_path}")
+        result = model.transcribe(audio_path, fp16=False)
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error in run_transcribe: {str(e)}", exc_info=True)
+        raise
 
 async def process_transcription(task_id: str, youtube_url: str):
     try:
@@ -52,22 +65,35 @@ async def process_transcription(task_id: str, youtube_url: str):
         
         loop = asyncio.get_event_loop()
         
-        # Log before download
+        # Download audio với timeout
         logger.info(f"Task {task_id}: Starting audio download")
-        audio_path = await loop.run_in_executor(
-            executor,
-            lambda: download_audio_from_youtube(youtube_url, output_path=f"audio_{task_id}.mp3", cookies_path="cookies.txt")
-        )
-        logger.info(f"Task {task_id}: Audio downloaded successfully to {audio_path}")
+        try:
+            audio_path = await asyncio.wait_for(
+                loop.run_in_executor(
+                    executor,
+                    lambda: download_audio_from_youtube(youtube_url, output_path=f"audio_{task_id}.mp3", cookies_path="cookies.txt")
+                ),
+                timeout=300  # 5 minutes timeout for download
+            )
+            logger.info(f"Task {task_id}: Audio downloaded successfully to {audio_path}")
+        except asyncio.TimeoutError:
+            logger.error(f"Task {task_id}: Download timeout after 5 minutes")
+            raise Exception("Download timeout")
         
-        # Log before transcribe
-        logger.info(f"Task {task_id}: Starting transcription")
-        result = await loop.run_in_executor(
-            process_pool,
-            run_transcribe,
-            audio_path
-        )
-        logger.info(f"Task {task_id}: Transcription completed")
+        # Transcribe với timeout
+        logger.info(f"Task {task_id}: Starting transcription with ProcessPoolExecutor")
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(process_pool, run_transcribe, audio_path),
+                timeout=1800  # 30 minutes timeout for transcription
+            )
+            logger.info(f"Task {task_id}: Transcription completed successfully")
+        except asyncio.TimeoutError:
+            logger.error(f"Task {task_id}: Transcription timeout after 30 minutes")
+            raise Exception("Transcription timeout")
+        except Exception as e:
+            logger.error(f"Task {task_id}: Transcription failed", exc_info=True)
+            raise
         
         # Log processing
         logger.info(f"Task {task_id}: Processing subtitles")
