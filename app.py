@@ -10,6 +10,14 @@ import asyncio
 import uuid
 from typing import Dict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import logging
+
+# Thiết lập logging ở đầu file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Tạo ứng dụng FastAPI
 app = FastAPI()
@@ -39,21 +47,30 @@ def run_transcribe(audio_path):
 
 async def process_transcription(task_id: str, youtube_url: str):
     try:
+        logger.info(f"Starting transcription process for task {task_id}")
+        logger.info(f"YouTube URL: {youtube_url}")
+        
         loop = asyncio.get_event_loop()
-        # Download audio vẫn dùng ThreadPoolExecutor
+        
+        # Log before download
+        logger.info(f"Task {task_id}: Starting audio download")
         audio_path = await loop.run_in_executor(
             executor,
             lambda: download_audio_from_youtube(youtube_url, output_path=f"audio_{task_id}.mp3", cookies_path="cookies.txt")
         )
-
-        # Chạy transcribe trong ProcessPoolExecutor
+        logger.info(f"Task {task_id}: Audio downloaded successfully to {audio_path}")
+        
+        # Log before transcribe
+        logger.info(f"Task {task_id}: Starting transcription")
         result = await loop.run_in_executor(
             process_pool,
             run_transcribe,
             audio_path
         )
+        logger.info(f"Task {task_id}: Transcription completed")
         
-        # Xử lý kết quả không cần lock
+        # Log processing
+        logger.info(f"Task {task_id}: Processing subtitles")
         subtitles = []
         for segment in result["segments"]:
             start = max(0, segment["start"] - 0.2)
@@ -66,27 +83,32 @@ async def process_transcription(task_id: str, youtube_url: str):
             })
             
         detected_language = result.get("language", "unknown")
+        logger.info(f"Task {task_id}: Detected language: {detected_language}")
         
         transcription_results[task_id] = {
             "status": "completed",
             "data": subtitles,
             "language": detected_language
         }
-        print(f"Transcription completed for task {task_id}")
+        logger.info(f"Task {task_id}: Process completed successfully")
         
     except Exception as e:
+        logger.error(f"Task {task_id}: Error occurred: {str(e)}", exc_info=True)
         transcription_results[task_id] = {
             "status": "error",
             "error": str(e)
         }
     
     finally:
-        # Clean up không cần lock
-        if os.path.exists(f"audio_{task_id}.mp3"):
-            await loop.run_in_executor(
-                executor,
-                lambda: os.remove(f"audio_{task_id}.mp3")
-            )
+        try:
+            if os.path.exists(f"audio_{task_id}.mp3"):
+                await loop.run_in_executor(
+                    executor,
+                    lambda: os.remove(f"audio_{task_id}.mp3")
+                )
+                logger.info(f"Task {task_id}: Cleaned up audio file")
+        except Exception as e:
+            logger.error(f"Task {task_id}: Error during cleanup: {str(e)}")
 
 @app.get("/hello")
 async def transcribe():
@@ -115,16 +137,15 @@ class YouTubeRequest(BaseModel):
 @app.post("/transcribe-sub")
 async def transcribeSub(request: YouTubeRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
+    logger.info(f"New transcription request received. Task ID: {task_id}")
     
-    # Khởi tạo trạng thái ban đầu
     transcription_results[task_id] = {
         "status": "processing"
     }
     
-    # Thêm task vào background
     background_tasks.add_task(process_transcription, task_id, request.youtube_url)
+    logger.info(f"Task {task_id} added to background tasks")
     
-    # Trả về task_id ngay lập tức
     return {
         "task_id": task_id,
         "status": "processing",
@@ -133,20 +154,19 @@ async def transcribeSub(request: YouTubeRequest, background_tasks: BackgroundTas
 
 @app.get("/transcribe-status/{task_id}")
 async def get_transcription_status(task_id: str):
+    logger.info(f"Status check for task {task_id}")
+    
     if task_id not in transcription_results:
+        logger.warning(f"Task {task_id} not found")
         raise HTTPException(status_code=404, detail="Task not found")
         
     result = transcription_results[task_id]
+    logger.info(f"Task {task_id} status: {result['status']}")
     
-    # Nếu đã hoàn thành hoặc có lỗi, xóa kết quả khỏi bộ nhớ
     if result["status"] in ["completed", "error"]:
         transcription_results.pop(task_id)
+        logger.info(f"Task {task_id} removed from memory")
     
-    # if os.path.exists(f"audio_{task_id}.mp3"):
-    #     os.remove(f"audio_{task_id}.mp3")
-    #     print("Removed: ", task_id)
-        
-
     return result
 
 # Chạy server: uvicorn filename:app --reload
