@@ -99,7 +99,7 @@ async def process_transcription(task_id: str, youtube_url: str):
         logger.info(f"Task {task_id}: Processing subtitles")
         subtitles = []
         for segment in result["segments"]:
-            start = max(0, segment["start"] - 0.2)
+            start = max(0, segment["start"] - 0.1)
             end = segment["end"]
             text = segment["text"]
             subtitles.append({
