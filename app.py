@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, Query
 import whisper
 import tempfile
 import os
@@ -43,7 +43,7 @@ def init_whisper_model():
     logger.info("Initializing new Whisper model in worker process")
     return whisper.load_model("base")
 
-def run_transcribe(audio_path):
+def run_transcribe(audio_path, language=None):
     try:
         logger.info(f"Worker process {os.getpid()} starting transcription")
         
@@ -51,7 +51,7 @@ def run_transcribe(audio_path):
         model = init_whisper_model()
         
         logger.info(f"Starting transcribe for file: {audio_path}")
-        result = model.transcribe(audio_path, fp16=False)
+        result = model.transcribe(audio_path, fp16=False, language=language)
         
         return result
     except Exception as e:
@@ -141,7 +141,7 @@ async def transcribe():
     return {"text": "Hello"}
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(file: UploadFile = File(...), language: str = Query(None, description="Language code (e.g., 'en', 'vi', 'ja'). Leave empty for auto-detect.")):
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file.write(await file.read())
         temp_file_path = temp_file.name
@@ -151,7 +151,8 @@ async def transcribe(file: UploadFile = File(...)):
     result = await loop.run_in_executor(
         process_pool,
         run_transcribe,
-        temp_file_path
+        temp_file_path,
+        language
     )
 
     os.remove(temp_file_path)
