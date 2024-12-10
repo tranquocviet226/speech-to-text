@@ -41,7 +41,7 @@ process_pool = ProcessPoolExecutor(max_workers=2)
 
 def init_whisper_model():
     logger.info("Initializing new Whisper model in worker process")
-    return whisper.load_model("base")
+    return whisper.load_model("turbo")
 
 def run_transcribe(audio_path, language=None):
     try:
@@ -58,39 +58,17 @@ def run_transcribe(audio_path, language=None):
         logger.error(f"Error in run_transcribe: {str(e)}", exc_info=True)
         raise
 
-def process_subtitles(segments, pause_threshold=0.5):
+def process_subtitles(segments):
     subtitles = []
-    buffer_text = ""
-    buffer_start = 0
-    last_end = 0
-
     for segment in segments:
-        start = max(0, segment["start"] - 0.1)
+        start = round(segment["start"], 3)
         end = segment["end"]
+        dur = round(end - start, 3)
         text = segment["text"].strip()
-
-        # Nếu khoảng dừng lớn hơn ngưỡng, ghi lại đoạn trước
-        if buffer_text and (start - last_end > pause_threshold):
-            subtitles.append({
-                "start": round(buffer_start, 3),
-                "dur": round(last_end - buffer_start, 3),
-                "text": buffer_text.strip()
-            })
-            buffer_text = ""
-            buffer_start = start
-
-        # Cập nhật buffer
-        if not buffer_text:
-            buffer_start = start
-        buffer_text += f" {text}"
-        last_end = end
-
-    # Thêm đoạn cuối
-    if buffer_text:
         subtitles.append({
-            "start": round(buffer_start, 3),
-            "dur": round(last_end - buffer_start, 3),
-            "text": buffer_text.strip()
+            "start": start,
+            "dur": dur,
+            "text": text
         })
 
     return subtitles
@@ -122,7 +100,7 @@ async def process_transcription(task_id: str, youtube_url: str):
         try:
             result = await asyncio.wait_for(
                 loop.run_in_executor(process_pool, run_transcribe, audio_path),
-                timeout=1800  # 30 minutes timeout for transcription
+                timeout=3600  # 30 minutes timeout for transcription
             )
             logger.info(f"Task {task_id}: Transcription completed successfully")
         except asyncio.TimeoutError:
