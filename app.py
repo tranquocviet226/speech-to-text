@@ -58,6 +58,43 @@ def run_transcribe(audio_path, language=None):
         logger.error(f"Error in run_transcribe: {str(e)}", exc_info=True)
         raise
 
+def process_subtitles(segments, pause_threshold=0.5):
+    subtitles = []
+    buffer_text = ""
+    buffer_start = 0
+    last_end = 0
+
+    for segment in segments:
+        start = max(0, segment["start"] - 0.1)
+        end = segment["end"]
+        text = segment["text"].strip()
+
+        # Nếu khoảng dừng lớn hơn ngưỡng, ghi lại đoạn trước
+        if buffer_text and (start - last_end > pause_threshold):
+            subtitles.append({
+                "start": round(buffer_start, 3),
+                "dur": round(last_end - buffer_start, 3),
+                "text": buffer_text.strip()
+            })
+            buffer_text = ""
+            buffer_start = start
+
+        # Cập nhật buffer
+        if not buffer_text:
+            buffer_start = start
+        buffer_text += f" {text}"
+        last_end = end
+
+    # Thêm đoạn cuối
+    if buffer_text:
+        subtitles.append({
+            "start": round(buffer_start, 3),
+            "dur": round(last_end - buffer_start, 3),
+            "text": buffer_text.strip()
+        })
+
+    return subtitles
+
 async def process_transcription(task_id: str, youtube_url: str):
     try:
         logger.info(f"Starting transcription process for task {task_id}")
@@ -97,16 +134,7 @@ async def process_transcription(task_id: str, youtube_url: str):
         
         # Log processing
         logger.info(f"Task {task_id}: Processing subtitles")
-        subtitles = []
-        for segment in result["segments"]:
-            start = max(0, segment["start"] - 0.1)
-            end = segment["end"]
-            text = segment["text"]
-            subtitles.append({
-                "start": round(start, 3),
-                "dur": round(end - start, 3),
-                "text": text.strip()
-            })
+        subtitles = process_subtitles(result["segments"])
             
         detected_language = result.get("language", "unknown")
         logger.info(f"Task {task_id}: Detected language: {detected_language}")
