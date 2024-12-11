@@ -73,7 +73,7 @@ def process_subtitles(segments):
 
     return subtitles
 
-async def process_transcription(task_id: str, youtube_url: str):
+async def process_transcription(task_id: str, youtube_url: str, language: str):
     try:
         logger.info(f"Starting transcription process for task {task_id}")
         logger.info(f"YouTube URL: {youtube_url}")
@@ -99,7 +99,7 @@ async def process_transcription(task_id: str, youtube_url: str):
         logger.info(f"Task {task_id}: Starting transcription with ProcessPoolExecutor")
         try:
             result = await asyncio.wait_for(
-                loop.run_in_executor(process_pool, run_transcribe, audio_path),
+                loop.run_in_executor(process_pool, run_transcribe, audio_path, language),
                 timeout=3600  # 30 minutes timeout for transcription
             )
             logger.info(f"Task {task_id}: Transcription completed successfully")
@@ -166,6 +166,7 @@ async def transcribe(file: UploadFile = File(...), language: str = Query(None, d
 
 class YouTubeRequest(BaseModel):
     youtube_url: str
+    language: str
 
 @app.post("/transcribe-sub")
 async def transcribeSub(request: YouTubeRequest, background_tasks: BackgroundTasks):
@@ -176,7 +177,7 @@ async def transcribeSub(request: YouTubeRequest, background_tasks: BackgroundTas
         "status": "processing"
     }
     
-    background_tasks.add_task(process_transcription, task_id, request.youtube_url)
+    background_tasks.add_task(process_transcription, task_id, request.youtube_url, request.language)
     logger.info(f"Task {task_id} added to background tasks")
     
     return {
