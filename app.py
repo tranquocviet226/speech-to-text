@@ -39,16 +39,16 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Tạo executor cho các tác vụ CPU-intensive
 process_pool = ProcessPoolExecutor(max_workers=2)
 
-def init_whisper_model():
+def init_whisper_model(model_name="base"):
     logger.info("Initializing new Whisper model in worker process")
-    return whisper.load_model("turbo")
+    return whisper.load_model(model_name)
 
 def run_transcribe(audio_path, language=None):
     try:
         logger.info(f"Worker process {os.getpid()} starting transcription")
         
-        # Load model trong worker process
-        model = init_whisper_model()
+        model_name = "turbo" if language == "ja" else "base"
+        model = init_whisper_model(model_name)
         
         logger.info(f"Starting transcribe for file: {audio_path}")
         result = model.transcribe(audio_path, fp16=False, language=language)
@@ -62,7 +62,7 @@ def process_subtitles(segments):
     subtitles = []
     for segment in segments:
         start = round(segment["start"], 3)
-        end = segment["end"]
+        end = round(segment["end"], 3)
         dur = round(end - start, 3)
         text = segment["text"].strip()
         subtitles.append({
