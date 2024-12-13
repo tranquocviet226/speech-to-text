@@ -47,7 +47,7 @@ def run_transcribe(audio_path, language=None):
     try:
         logger.info(f"Worker process {os.getpid()} starting transcription")
         
-        model_name = "turbo" if language == "ja" else "base"
+        model_name = "base"
         model = init_whisper_model(model_name)
         
         logger.info(f"Starting transcribe for file: {audio_path}")
@@ -142,10 +142,6 @@ async def process_transcription(task_id: str, youtube_url: str, language: str):
         except Exception as e:
             logger.error(f"Task {task_id}: Error during cleanup: {str(e)}")
 
-@app.get("/hello")
-async def transcribe():
-    return {"text": "Hello"}
-
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...), language: str = Query(None, description="Language code (e.g., 'en', 'vi', 'ja'). Leave empty for auto-detect.")):
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -202,5 +198,3 @@ async def get_transcription_status(task_id: str):
         logger.info(f"Task {task_id} removed from memory")
     
     return result
-
-# Chạy server: uvicorn filename:app --reload
