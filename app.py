@@ -46,11 +46,7 @@ async def api_parse(data: ParseRequest):
     if not data.sentences:
         raise HTTPException(status_code=400, detail="Chưa cung cấp sentences")
     
-    tokens = []
-    for sentence in data.sentences:  # Iterate over the list of sentences
-        tokens.extend(parse_sentence(sentence))  # Collect tokens from each sentence
-
-    return {
-        "original": data.sentences,  # Updated to return the list of sentences
-        "tokens": tokens
-    }
+    return [
+        {"parseText": parse_sentence(sentence)}  # Updated to return a list of objects
+        for sentence in data.sentences  # Iterate over each sentence
+    ]
