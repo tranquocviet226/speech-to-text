@@ -21,7 +21,7 @@ app.add_middleware(
 
 # Khởi tạo MeCab với từ điển NEologd (đường dẫn có thể thay đổi tùy hệ thống)
 # tagger = MeCab.Tagger("-d /opt/homebrew/lib/mecab/dic/mecab-ipadic-neologd") # MacOS
-tagger = MeCab.Tagger("-d /usr/local/lib/mecab/dic/mecab-ipadic-neologd") # Ubuntu
+tagger = MeCab.Tagger("-r /etc/mecabrc -d /usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd") # Ubuntu
 
 def parse_sentence(sentence: str):
     """
