@@ -5,7 +5,7 @@ import MeCab
 
 # Định nghĩa model dữ liệu cho request
 class ParseRequest(BaseModel):
-    sentence: str
+    sentences: list[str]
     secret: str
 
 # Khởi tạo FastAPI
@@ -46,8 +46,11 @@ async def api_parse(data: ParseRequest):
     if not data.sentence:
         raise HTTPException(status_code=400, detail="Chưa cung cấp sentence")
     
-    tokens = parse_sentence(data.sentence)
+    tokens = []
+    for sentence in data.sentences:  # Iterate over the list of sentences
+        tokens.extend(parse_sentence(sentence))  # Collect tokens from each sentence
+
     return {
-        "original": data.sentence,
+        "original": data.sentences,  # Updated to return the list of sentences
         "tokens": tokens
     }
