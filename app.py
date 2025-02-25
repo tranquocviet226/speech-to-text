@@ -43,8 +43,8 @@ def parse_sentence(sentence: str):
 async def api_parse(data: ParseRequest):
     if data.secret != 'vqtauthsecret2': 
         raise HTTPException(status_code=401, detail="Unauthorized") 
-    if not data.sentence:
-        raise HTTPException(status_code=400, detail="Chưa cung cấp sentence")
+    if not data.sentences:
+        raise HTTPException(status_code=400, detail="Chưa cung cấp sentences")
     
     tokens = []
     for sentence in data.sentences:  # Iterate over the list of sentences
